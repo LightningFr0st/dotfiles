@@ -1,0 +1,124 @@
+local function make_configure_template(preset, display_name, cwd)
+  return {
+    name = 'cmake configure: ' .. display_name,
+
+    builder = function()
+      return {
+        cmd = 'cmake',
+        args = { '--preset', preset, '--fresh' },
+        cwd = cwd,
+        components = { 'default' },
+      }
+    end,
+  }
+end
+
+local common_targets = {
+  'ufl_mobile_client',
+  'ufl_mobile_server',
+  'deploy_all_plugins_into_yoko',
+  'assets_compile_filtered',
+  'assets_deploy_link',
+  'assets_compile_converters',
+}
+
+local function make_build_target_template(preset, display_name, cwd, fixed_target)
+  local is_fixed = fixed_target ~= nil
+
+  return {
+    name = is_fixed and ('cmake build: ' .. display_name .. ': ' .. fixed_target) or ('cmake build: ' .. display_name .. ': custom target'),
+
+    params = is_fixed and {} or {
+      target = {
+        type = 'string',
+        desc = 'Target(s), space-separated',
+      },
+    },
+
+    builder = function(params)
+      local args = { '--build', '--preset', preset }
+
+      if is_fixed then
+        vim.list_extend(args, { '--target', fixed_target })
+      else
+        table.insert(args, '--target')
+
+        for target in params.target:gmatch '%S+' do
+          table.insert(args, target)
+        end
+      end
+
+      return {
+        cmd = 'cmake',
+        args = args,
+        cwd = cwd,
+        components = { 'default' },
+      }
+    end,
+  }
+end
+
+local function find_presets_dir(dir, file)
+  if not dir or dir == '' then return nil end
+
+  local preset_file = vim.fs.find(file, {
+    upward = true,
+    type = 'file',
+    path = dir,
+    limit = 1,
+  })[1]
+
+  return preset_file and vim.fs.dirname(preset_file) or nil
+end
+
+local function get_presets_dir(dir)
+  dir = dir or vim.fn.getcwd()
+
+  return find_presets_dir(dir, 'CMakeUserPresets.json')
+    or find_presets_dir(dir, 'CMakePresets.json')
+    or find_presets_dir(vim.fn.getcwd(), 'CMakeUserPresets.json')
+    or find_presets_dir(vim.fn.getcwd(), 'CMakePresets.json')
+end
+
+local function parse_preset_line(line)
+  local name, display_name = line:match '^%s*"([^"]+)"%s+-%s+(.+)%s*$'
+  if name then return name, display_name end
+
+  name = line:match '^%s*"([^"]+)"%s*$'
+  if name then return name, name end
+end
+
+local function get_presets(dir)
+  local templates = {}
+
+  local configure_result = vim.system({ 'cmake', '-S', dir, '--list-presets=configure' }, { text = true }):wait()
+  for line in configure_result.stdout:gmatch '[^\r\n]+' do
+    local name, display_name = parse_preset_line(line)
+    if name then table.insert(templates, make_configure_template(name, display_name, dir)) end
+  end
+
+  local build_result = vim.system({ 'cmake', '-S', dir, '--list-presets=build' }, { text = true }):wait()
+  for line in build_result.stdout:gmatch '[^\r\n]+' do
+    local name, display_name = parse_preset_line(line)
+    if name then
+      table.insert(templates, make_build_target_template(name, display_name, dir))
+
+      for _, target in ipairs(common_targets) do
+        table.insert(templates, make_build_target_template(name, display_name, dir, target))
+      end
+    end
+  end
+
+  return templates
+end
+
+return {
+  name = 'cmake presets',
+
+  generator = function(search)
+    local presets_dir = get_presets_dir(search.dir)
+    if not presets_dir then return {} end
+
+    return get_presets(presets_dir)
+  end,
+}
