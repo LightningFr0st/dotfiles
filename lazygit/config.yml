@@ -1,0 +1,10 @@
+customCommands:
+  - key: "U"
+    context: "global"
+    description: "Sync current branch from upstream"
+    prompts:
+      - type: "confirm"
+        title: "Sync current branch from upstream?"
+        body: "Runs only if the working tree is clean and upstream has a branch with the same name."
+    command: pwsh -NoProfile -ExecutionPolicy Bypass -Command ". (Join-Path $env:UFL 'scripts\upstream.ps1')"
+    output: "terminal"
