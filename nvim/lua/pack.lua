@@ -14,6 +14,31 @@ end
 
 local pack_handlers = {
   ['telescope-fzf-native.nvim'] = function(ev)
+    if vim.fn.has 'win32' == 1 then
+      if vim.fn.executable 'cmake' == 1 then
+        run_build(ev.data.spec.name, {
+          'cmake',
+          '-S',
+          '.',
+          '-B',
+          'build',
+          '-DCMAKE_BUILD_TYPE=Release',
+        }, ev.data.path)
+
+        run_build(ev.data.spec.name, {
+          'cmake',
+          '--build',
+          'build',
+          '--config',
+          'Release',
+          '--target',
+          'install',
+        }, ev.data.path)
+      end
+
+      return
+    end
+
     if vim.fn.executable 'make' == 1 then run_build(ev.data.spec.name, { 'make' }, ev.data.path) end
   end,
 
