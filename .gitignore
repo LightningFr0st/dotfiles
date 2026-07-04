@@ -1,2 +1,4 @@
 .luarc.json
 spell/
+/yazi/plugins/
+/yazi/flavors/
